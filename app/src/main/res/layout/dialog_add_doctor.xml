@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Doctor Name"
+        android:textAppearance="?attr/textAppearanceBodyMedium"/>
+
+    <EditText
+        android:id="@+id/etDoctorName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Doctor's Name"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Role/Speciality"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:layout_marginTop="8dp"/>
+
+    <EditText
+        android:id="@+id/etDoctorRole"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Enter doctor role"/>
+
+    <EditText
+        android:id="@+id/etHospitalName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Hospital Name" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Address"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:layout_marginTop="8dp"/>
+
+    <EditText
+        android:id="@+id/etDoctorAddress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Doctor Address"/>
+
+</LinearLayout>
