@@ -2,7 +2,13 @@
 package com.example.ncrm
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -13,12 +19,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.example.ncrm.DetailsActivity.Companion.TYPE_DOCTOR
+import com.example.ncrm.DetailsActivity.Companion.TYPE_HOSPITAL
 import com.example.ncrm.R.id.etDoctorName
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -36,43 +40,119 @@ data class Hospital(
     val doctors: MutableList<Doctor> = mutableListOf()
 )
 
+// DetailsActivity.kt
+class DetailsActivity : AppCompatActivity() {
+    companion object {
+        const val EXTRA_TYPE = "type"
+        const val EXTRA_NAME = "name"
+        const val TYPE_HOSPITAL = "hospital"
+        const val TYPE_DOCTOR = "doctor"
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_details)
+
+        val type = intent.getStringExtra(EXTRA_TYPE)
+        val name = intent.getStringExtra(EXTRA_NAME)
+
+        when (type) {
+            TYPE_HOSPITAL -> {
+                supportActionBar?.title = "Hospital: $name"
+                // Add hospital-specific UI here
+            }
+            TYPE_DOCTOR -> {
+                supportActionBar?.title = "Doctor: $name"
+                // Add doctor-specific UI here
+            }
+        }
+    }
+}
+
 class MainActivity : AppCompatActivity() {
 
 
     private val hospitals = mutableListOf<Hospital>()
     private val fileName = "hospital_data.json"
+
     private fun displayTree() {
         val treeView = findViewById<TextView>(R.id.treeTextView)
-        val sb = StringBuilder()
+        val sb = SpannableStringBuilder()
+
         for (hospital in hospitals) {
+            // Make hospital name clickable
+            val hospitalStart = sb.length
             sb.append("🏥 ${hospital.name}\n")
+            val hospitalEnd = sb.length
+            sb.setSpan(
+                createClickableSpan(TYPE_HOSPITAL, hospital.name),
+                hospitalStart, hospitalEnd,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+
             for (doctor in hospital.doctors) {
                 appendDoctor(sb, doctor, 1)
             }
         }
-        treeView.text = sb.toString()
+
+        treeView.movementMethod = LinkMovementMethod.getInstance()
+        treeView.text = sb
     }
 
-    private fun appendDoctor(sb: StringBuilder, doctor: Doctor, level: Int) {
+    private fun appendDoctor(sb: SpannableStringBuilder, doctor: Doctor, level: Int) {
         val indent = "    ".repeat(level)
-        sb.append("$indent👨‍⚕️ ${doctor.name} - ${doctor.role} (${doctor.address})\n") // Add address here
+        val doctorStart = sb.length
+        sb.append("$indent👨‍⚕️ ${doctor.name} - ${doctor.role} (${doctor.address})\n")
+        val doctorEnd = sb.length
+
+        // Make doctor name clickable
+        sb.setSpan(
+            createClickableSpan(TYPE_DOCTOR, doctor.name),
+            doctorStart, doctorEnd,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+
         for (ref in doctor.referredDoctors) {
             appendDoctor(sb, ref, level + 1)
         }
     }
 
+    private fun createClickableSpan(type: String, name: String): ClickableSpan {
+        return object : ClickableSpan() {
+            override fun onClick(widget: View) {
+                val intent = Intent(this@MainActivity, DetailsActivity::class.java).apply {
+                    putExtra("type", type)
+                    putExtra("name", name)
+                }
+                startActivity(intent)
+            }
+
+            override fun updateDrawState(ds: TextPaint) {
+                super.updateDrawState(ds)
+                // Use default link color instead of custom color
+                ds.color = ds.linkColor // Uses the system's default link color
+                ds.isUnderlineText = false
+            }
+        }
+    }
+
+//    private fun openDetail(type: String, name: String) {
+//        val intent = Intent(this, DetailActivity::class.java)
+//        intent.putExtra("type", type)
+//        intent.putExtra("name", name)
+//        startActivity(intent)
+//    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
         if (hospitals.isEmpty()) {
             hospitals.add(Hospital("Default Hospital"))
         }
 
-
         loadData()
         displayTree()
-
 
         val fab = findViewById<FloatingActionButton>(R.id.fab)
         fab.setOnClickListener {
