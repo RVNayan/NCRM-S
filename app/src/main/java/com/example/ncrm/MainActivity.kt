@@ -14,7 +14,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
+import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -45,30 +47,183 @@ class DetailsActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_TYPE = "type"
         const val EXTRA_NAME = "name"
+        const val EXTRA_HOSPITAL = "hospital"
         const val TYPE_HOSPITAL = "hospital"
         const val TYPE_DOCTOR = "doctor"
     }
+
+    private lateinit var notesContainer: LinearLayout
+    private lateinit var doctorName: String
+    private lateinit var hospitalName: String
+    private val fileName = "doctor_notes.json"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_details)
 
         val type = intent.getStringExtra(EXTRA_TYPE)
-        val name = intent.getStringExtra(EXTRA_NAME)
+        doctorName = intent.getStringExtra(EXTRA_NAME) ?: ""
+        hospitalName = intent.getStringExtra(EXTRA_HOSPITAL) ?: ""
+
+        notesContainer = findViewById(R.id.notesContainer)
 
         when (type) {
-            TYPE_HOSPITAL -> {
-                supportActionBar?.title = "Hospital: $name"
-                // Add hospital-specific UI here
-            }
             TYPE_DOCTOR -> {
-                supportActionBar?.title = "Doctor: $name"
-                // Add doctor-specific UI here
+                supportActionBar?.title = "Doctor: $doctorName"
+                findViewById<TextView>(R.id.tvDoctorInfo).text =
+                    "👨‍⚕️ $doctorName\n🏥 $hospitalName"
+
+                loadNotes()
+                findViewById<Button>(R.id.btnAddNote).setOnClickListener {
+                    showAddNoteDialog()
+                }
+            }
+            TYPE_HOSPITAL -> {
+                supportActionBar?.title = "Hospital: $doctorName"
             }
         }
     }
+
+    private fun showAddNoteDialog() {
+        val dialogView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 16, 32, 16)
+        }
+
+        val dateInput = EditText(this).apply {
+            hint = "Enter date (DD/MM/YYYY)"
+        }
+        val descInput = EditText(this).apply {
+            hint = "Enter note description"
+        }
+
+        dialogView.addView(dateInput)
+        dialogView.addView(descInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Add Note")
+            .setView(dialogView)
+            .setPositiveButton("Save") { _, _ ->
+                val date = dateInput.text.toString().trim()
+                val desc = descInput.text.toString().trim()
+
+                if (date.isNotEmpty() && desc.isNotEmpty()) {
+                    addNoteView(date, desc)
+                    saveNote(date, desc)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun addNoteView(date: String, desc: String) {
+        val preview = if (desc.length > 30) desc.take(30) + "..." else desc
+
+        val noteView = TextView(this).apply {
+            text = "📅 $date\n📝 $preview"
+            textSize = 16f
+            setPadding(8, 12, 8, 12)
+            setOnClickListener {
+                showFullNoteDialog(date, desc)
+            }
+        }
+        notesContainer.addView(noteView)
+    }
+
+    private fun showFullNoteDialog(date: String, desc: String) {
+        val input = EditText(this).apply {
+            setText(desc)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("📅 $date")
+            .setView(input)
+            .setPositiveButton("Save Changes") { _, _ ->
+                val updated = input.text.toString().trim()
+                if (updated.isNotEmpty()) {
+                    updateNote(date, desc, updated)
+                    notesContainer.removeAllViews()
+                    loadNotes()
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun saveNote(date: String, desc: String) {
+        val file = File(getExternalFilesDir(null), fileName)
+        val jsonArray = if (file.exists()) JSONArray(file.readText()) else JSONArray()
+
+        var doctorObj: JSONObject? = null
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.getJSONObject(i)
+            if (obj.getString("doctor") == doctorName && obj.getString("hospital") == hospitalName) {
+                doctorObj = obj
+                break
+            }
+        }
+
+        if (doctorObj == null) {
+            doctorObj = JSONObject().apply {
+                put("doctor", doctorName)
+                put("hospital", hospitalName)
+                put("notes", JSONArray().put(JSONObject().apply {
+                    put("date", date)
+                    put("desc", desc)
+                }))
+            }
+            jsonArray.put(doctorObj)
+        } else {
+            val notesArray = doctorObj.getJSONArray("notes")
+            notesArray.put(JSONObject().apply {
+                put("date", date)
+                put("desc", desc)
+            })
+        }
+
+        file.writeText(jsonArray.toString())
+    }
+
+    private fun loadNotes() {
+        val file = File(getExternalFilesDir(null), fileName)
+        if (!file.exists()) return
+
+        val jsonArray = JSONArray(file.readText())
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.getJSONObject(i)
+            if (obj.getString("doctor") == doctorName && obj.getString("hospital") == hospitalName) {
+                val notesArray = obj.getJSONArray("notes")
+                for (j in 0 until notesArray.length()) {
+                    val noteObj = notesArray.getJSONObject(j)
+                    addNoteView(noteObj.getString("date"), noteObj.getString("desc"))
+                }
+            }
+        }
+    }
+
+    private fun updateNote(date: String, oldDesc: String, newDesc: String) {
+        val file = File(getExternalFilesDir(null), fileName)
+        if (!file.exists()) return
+        val jsonArray = JSONArray(file.readText())
+
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.getJSONObject(i)
+            if (obj.getString("doctor") == doctorName && obj.getString("hospital") == hospitalName) {
+                val notesArray = obj.getJSONArray("notes")
+                for (j in 0 until notesArray.length()) {
+                    val noteObj = notesArray.getJSONObject(j)
+                    if (noteObj.getString("date") == date && noteObj.getString("desc") == oldDesc) {
+                        noteObj.put("desc", newDesc)
+                    }
+                }
+            }
+        }
+
+        file.writeText(jsonArray.toString())
+    }
 }
 
+//end of details Activity.kt
 class MainActivity : AppCompatActivity() {
 
 
@@ -120,21 +275,32 @@ class MainActivity : AppCompatActivity() {
     private fun createClickableSpan(type: String, name: String): ClickableSpan {
         return object : ClickableSpan() {
             override fun onClick(widget: View) {
+                var hospitalName = ""
+                if (type == TYPE_DOCTOR) {
+                    // Find which hospital this doctor belongs to
+                    hospitals.forEach { hospital ->
+                        if (findDoctorRecursive(hospital.doctors, name) != null) {
+                            hospitalName = hospital.name
+                        }
+                    }
+                }
+
                 val intent = Intent(this@MainActivity, DetailsActivity::class.java).apply {
                     putExtra("type", type)
                     putExtra("name", name)
+                    putExtra("hospital", hospitalName)
                 }
                 startActivity(intent)
             }
 
             override fun updateDrawState(ds: TextPaint) {
                 super.updateDrawState(ds)
-                // Use default link color instead of custom color
-                ds.color = ds.linkColor // Uses the system's default link color
+                ds.color = ds.linkColor
                 ds.isUnderlineText = false
             }
         }
     }
+
 
 //    private fun openDetail(type: String, name: String) {
 //        val intent = Intent(this, DetailActivity::class.java)

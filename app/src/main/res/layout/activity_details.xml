@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -6,18 +5,40 @@
     android:padding="16dp">
 
     <TextView
-        android:id="@+id/titleTextView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textSize="20sp"
-        android:textStyle="bold"/>
-
-    <!-- Add more UI elements here for future data -->
-    <Button
-        android:id="@+id/addDataButton"
+        android:id="@+id/tvDetailsHeader"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Add More Data"
-        android:layout_marginTop="16dp"/>
+        android:text="Details"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:paddingBottom="8dp" />
 
+    <TextView
+        android:id="@+id/tvDoctorInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Doctor Info"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:padding="8dp"
+        android:gravity="center" />
+
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:id="@+id/notesContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnAddNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Add Note" />
 </LinearLayout>
