@@ -1,0 +1,31 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:minHeight="400dp"
+    android:layout_gravity="center"
+    >
+
+    <EditText
+        android:id="@+id/etNoteDate"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:focusable="false"
+        android:hint="Select Date"
+        android:padding="12dp"
+        android:background="@android:drawable/editbox_background" />
+
+    <EditText
+        android:id="@+id/etNoteDesc"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:hint="Enter description"
+        android:gravity="top"
+        android:minHeight="200dp"
+        android:padding="12dp"
+        android:background="@android:drawable/editbox_background"
+        android:inputType="textMultiLine"
+        android:scrollbars="vertical"/>
+</LinearLayout>

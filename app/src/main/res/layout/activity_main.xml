@@ -22,18 +22,33 @@
         app:layout_anchor="@id/content_frame"
         app:layout_anchorGravity="bottom|end"
         app:tint="@android:color/white" />
-    <ScrollView
-        xmlns:android="http://schemas.android.com/apk/res/android"
+
+    <LinearLayout
+        style="@style/ScreenContainer"
+        android:orientation="vertical"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:padding="16dp">
 
-        <TextView
-            android:id="@+id/treeTextView"
+        <!-- Search bar -->
+        <SearchView
+            android:id="@+id/searchView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="16sp"
-            android:fontFamily="monospace" />
-    </ScrollView>
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+            android:queryHint="Search doctor or hospital..." />
 
+        <!-- Scrollable tree -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <TextView
+                android:id="@+id/treeTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="16sp"
+                android:fontFamily="monospace" />
+        </ScrollView>
+    </LinearLayout>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -6,11 +6,12 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Doctor Name"
-        android:textAppearance="?attr/textAppearanceBodyMedium"/>
+<!--    <TextView-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:text="Doctor Name"-->
+<!--        android:textAppearance="?attr/textAppearanceBodyMedium"-->
+<!--        android:textSize="18sp"/>-->
 
     <EditText
         android:id="@+id/etDoctorName"
@@ -18,12 +19,13 @@
         android:layout_height="wrap_content"
         android:hint="Doctor's Name"/>
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Role/Speciality"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
-        android:layout_marginTop="8dp"/>
+<!--    <TextView-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:text="Role/Speciality"-->
+<!--        android:textAppearance="?attr/textAppearanceBodyMedium"-->
+<!--        android:layout_marginTop="8dp"-->
+<!--        />-->
 
     <EditText
         android:id="@+id/etDoctorRole"
@@ -37,12 +39,12 @@
         android:layout_height="wrap_content"
         android:hint="Hospital Name" />
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Address"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
-        android:layout_marginTop="8dp"/>
+<!--    <TextView-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:text="Address"-->
+<!--        android:textAppearance="?attr/textAppearanceBodyMedium"-->
+<!--        android:layout_marginTop="8dp"/>-->
 
     <EditText
         android:id="@+id/etDoctorAddress"

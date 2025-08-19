@@ -2,6 +2,7 @@
 package com.example.ncrm
 
 import android.annotation.SuppressLint
+import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.text.Spannable
@@ -17,6 +18,7 @@ import android.widget.AutoCompleteTextView
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.SearchView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -28,6 +30,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Calendar
 
 data class Doctor(
     val name: String,
@@ -52,106 +55,204 @@ class DetailsActivity : AppCompatActivity() {
         const val TYPE_DOCTOR = "doctor"
     }
 
+    private val hospitals = mutableListOf<Hospital>()
+    private val fileNameHospital = "hospital_data.json"
+    private val fileNameNotes = "doctor_notes.json"
+
     private lateinit var notesContainer: LinearLayout
     private lateinit var doctorName: String
     private lateinit var hospitalName: String
-    private val fileName = "doctor_notes.json"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_details)
 
         val type = intent.getStringExtra(EXTRA_TYPE)
-        doctorName = intent.getStringExtra(EXTRA_NAME) ?: ""
+        val name = intent.getStringExtra(EXTRA_NAME)
         hospitalName = intent.getStringExtra(EXTRA_HOSPITAL) ?: ""
+        doctorName = name ?: ""
 
-        notesContainer = findViewById(R.id.notesContainer)
+        loadData()
 
         when (type) {
-            TYPE_DOCTOR -> {
-                supportActionBar?.title = "Doctor: $doctorName"
-                findViewById<TextView>(R.id.tvDoctorInfo).text =
-                    "👨‍⚕️ $doctorName\n🏥 $hospitalName"
-
-                loadNotes()
-                findViewById<Button>(R.id.btnAddNote).setOnClickListener {
-                    showAddNoteDialog()
-                }
-            }
             TYPE_HOSPITAL -> {
-                supportActionBar?.title = "Hospital: $doctorName"
+                supportActionBar?.title = "Hospital: $name"
+                findViewById<TextView>(R.id.detailsTextView).visibility = View.VISIBLE
+                findViewById<LinearLayout>(R.id.doctorLayout).visibility = View.GONE
+                displayHospitalHierarchy(name ?: "")
             }
+            TYPE_DOCTOR -> {
+                supportActionBar?.title = "Doctor: $name"
+                findViewById<TextView>(R.id.detailsTextView).visibility = View.GONE
+                findViewById<LinearLayout>(R.id.doctorLayout).visibility = View.VISIBLE
+                setupDoctorUI()
+                displayDoctorDetails(name ?: "")
+            }
+        }
+
+    }
+
+    // --------------------------
+    // 📍 HOSPITAL VIEW
+    // --------------------------
+    private fun displayHospitalHierarchy(hospitalName: String) {
+        val treeView = findViewById<TextView>(R.id.detailsTextView)
+        val sb = SpannableStringBuilder()
+
+        val hospital = hospitals.find { it.name.equals(hospitalName, true) }
+        if (hospital != null) {
+            sb.append("🏥 ${hospital.name}\n\n") // Show hospital name at top
+            for (doctor in hospital.doctors) {
+                appendDoctor(sb, doctor, 0, hospital.name)
+            }
+        }
+
+        treeView.movementMethod = LinkMovementMethod.getInstance()
+        treeView.text = sb
+
+        // ✅ Long press hospital name to edit
+        treeView.setOnLongClickListener {
+            showEditHospitalNameDialog(hospitalName)
+            true
         }
     }
 
-    private fun showAddNoteDialog() {
-        val dialogView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 16, 32, 16)
+
+    private fun appendDoctor(sb: SpannableStringBuilder, doctor: Doctor, level: Int, hospital: String) {
+        val indent = "    ".repeat(level)
+        val start = sb.length
+        sb.append("$indent️${doctor.name} - ${doctor.role} (${doctor.address})\n")
+        val end = sb.length
+
+        sb.setSpan(object : ClickableSpan() {
+            override fun onClick(widget: View) {
+                val intent = Intent(this@DetailsActivity, DetailsActivity::class.java).apply {
+                    putExtra(EXTRA_TYPE, TYPE_DOCTOR)
+                    putExtra(EXTRA_NAME, doctor.name)
+                    putExtra(EXTRA_HOSPITAL, hospital)
+                }
+                startActivity(intent)
+            }
+
+            override fun updateDrawState(ds: TextPaint) {
+                super.updateDrawState(ds)
+                ds.color = ds.linkColor
+                ds.isUnderlineText = false
+            }
+        }, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        for (ref in doctor.referredDoctors) {
+            appendDoctor(sb, ref, level + 1, hospital)
+        }
+    }
+
+    // --------------------------
+    // 📍 DOCTOR VIEW
+    // --------------------------
+    private fun setupDoctorUI() {
+        notesContainer = findViewById(R.id.notesContainer)
+
+        val tvDoctorInfo = findViewById<TextView>(R.id.tvDoctorInfo)
+        tvDoctorInfo.text = "👨‍⚕️ $doctorName\n🏥 $hospitalName"
+
+// First click = edit doctor name
+        tvDoctorInfo.setOnLongClickListener {
+            showEditDoctorNameDialog(doctorName, hospitalName)
+            true
         }
 
-        val dateInput = EditText(this).apply {
-            hint = "Enter date (DD/MM/YYYY)"
-        }
-        val descInput = EditText(this).apply {
-            hint = "Enter note description"
+// Normal click = show phone numbers
+        tvDoctorInfo.setOnClickListener {
+            showPhoneNumbersDialog()
         }
 
-        dialogView.addView(dateInput)
-        dialogView.addView(descInput)
 
-        AlertDialog.Builder(this)
-            .setTitle("Add Note")
+        loadNotes()
+
+        findViewById<Button>(R.id.btnAddNote).setOnClickListener {
+            showAddNoteDialog()
+        }
+    }
+
+    private fun displayDoctorDetails(doctorName: String) {
+        val doctor = findDoctorRecursive(hospitals.flatMap { it.doctors }, doctorName)
+        val treeView = findViewById<TextView>(R.id.detailsTextView)
+
+        if (doctor != null) {
+            val hospital = findHospitalForDoctor(doctorName)
+            val header = "${doctor.name}\n🏥 ${hospital?.name ?: "Unknown Hospital"}\n\n"
+            treeView.text = header
+        } else {
+            treeView.text = "Doctor not found"
+        }
+    }
+
+    // --------------------------
+    // 📍 NOTES HANDLING
+    // --------------------------
+    private fun showAddNoteDialog(existingDate: String? = null, existingDesc: String? = null, editIndex: Int? = null) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_note, null)
+        val etDate = dialogView.findViewById<EditText>(R.id.etNoteDate)
+        val etDesc = dialogView.findViewById<EditText>(R.id.etNoteDesc)
+
+        etDate.setText(existingDate ?: "")
+        etDesc.setText(existingDesc ?: "")
+
+        etDate.setOnClickListener {
+            val calendar = Calendar.getInstance()
+            DatePickerDialog(this, { _, year, month, day ->
+                etDate.setText("%02d/%02d/%04d".format(day, month + 1, year))
+            }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(if (editIndex == null) "Add Note" else "Edit Note")
             .setView(dialogView)
             .setPositiveButton("Save") { _, _ ->
-                val date = dateInput.text.toString().trim()
-                val desc = descInput.text.toString().trim()
-
+                val date = etDate.text.toString().trim()
+                val desc = etDesc.text.toString().trim()
                 if (date.isNotEmpty() && desc.isNotEmpty()) {
-                    addNoteView(date, desc)
-                    saveNote(date, desc)
+                    if (editIndex == null) {
+                        saveNoteWithDate(date, desc)
+                        addNoteView(date, desc, notesContainer.childCount)
+                    } else {
+                        updateNoteAtIndex(editIndex, date, desc)
+                    }
                 }
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.9).toInt(),
+            (resources.displayMetrics.heightPixels * 0.8).toInt()
+        )
     }
 
-    private fun addNoteView(date: String, desc: String) {
-        val preview = if (desc.length > 30) desc.take(30) + "..." else desc
+    private fun addNoteView(date: String, desc: String, index: Int) {
+        val preview = if (desc.length > 40) desc.take(40) + "..." else desc
 
         val noteView = TextView(this).apply {
-            text = "📅 $date\n📝 $preview"
+            text = "📅 $date\n$preview"
             textSize = 16f
-            setPadding(8, 12, 8, 12)
+            setPadding(16, 16, 16, 16)
             setOnClickListener {
-                showFullNoteDialog(date, desc)
+                AlertDialog.Builder(this@DetailsActivity)
+                    .setTitle("Note on $date")
+                    .setMessage(desc)
+                    .setPositiveButton("Edit") { _, _ ->
+                        showAddNoteDialog(date, desc, index)
+                    }
+                    .setNegativeButton("Close", null)
+                    .show()
             }
         }
         notesContainer.addView(noteView)
     }
 
-    private fun showFullNoteDialog(date: String, desc: String) {
-        val input = EditText(this).apply {
-            setText(desc)
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("📅 $date")
-            .setView(input)
-            .setPositiveButton("Save Changes") { _, _ ->
-                val updated = input.text.toString().trim()
-                if (updated.isNotEmpty()) {
-                    updateNote(date, desc, updated)
-                    notesContainer.removeAllViews()
-                    loadNotes()
-                }
-            }
-            .setNegativeButton("Close", null)
-            .show()
-    }
-
-    private fun saveNote(date: String, desc: String) {
-        val file = File(getExternalFilesDir(null), fileName)
+    private fun saveNoteWithDate(date: String, desc: String) {
+        val file = File(getExternalFilesDir(null), fileNameNotes)
         val jsonArray = if (file.exists()) JSONArray(file.readText()) else JSONArray()
 
         var doctorObj: JSONObject? = null
@@ -167,6 +268,7 @@ class DetailsActivity : AppCompatActivity() {
             doctorObj = JSONObject().apply {
                 put("doctor", doctorName)
                 put("hospital", hospitalName)
+                put("phones", JSONArray())
                 put("notes", JSONArray().put(JSONObject().apply {
                     put("date", date)
                     put("desc", desc)
@@ -174,18 +276,19 @@ class DetailsActivity : AppCompatActivity() {
             }
             jsonArray.put(doctorObj)
         } else {
-            val notesArray = doctorObj.getJSONArray("notes")
+            val notesArray = doctorObj.optJSONArray("notes") ?: JSONArray()
             notesArray.put(JSONObject().apply {
                 put("date", date)
                 put("desc", desc)
             })
+            doctorObj.put("notes", notesArray)
         }
 
         file.writeText(jsonArray.toString())
     }
 
     private fun loadNotes() {
-        val file = File(getExternalFilesDir(null), fileName)
+        val file = File(getExternalFilesDir(null), fileNameNotes)
         if (!file.exists()) return
 
         val jsonArray = JSONArray(file.readText())
@@ -195,32 +298,289 @@ class DetailsActivity : AppCompatActivity() {
                 val notesArray = obj.getJSONArray("notes")
                 for (j in 0 until notesArray.length()) {
                     val noteObj = notesArray.getJSONObject(j)
-                    addNoteView(noteObj.getString("date"), noteObj.getString("desc"))
+                    addNoteView(noteObj.getString("date"), noteObj.getString("desc"), j)
                 }
             }
         }
     }
 
-    private fun updateNote(date: String, oldDesc: String, newDesc: String) {
-        val file = File(getExternalFilesDir(null), fileName)
+    private fun updateNoteAtIndex(index: Int, newDate: String, newDesc: String) {
+        val file = File(getExternalFilesDir(null), fileNameNotes)
         if (!file.exists()) return
         val jsonArray = JSONArray(file.readText())
 
+        var doctorObj: JSONObject? = null
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.getJSONObject(i)
             if (obj.getString("doctor") == doctorName && obj.getString("hospital") == hospitalName) {
-                val notesArray = obj.getJSONArray("notes")
-                for (j in 0 until notesArray.length()) {
-                    val noteObj = notesArray.getJSONObject(j)
-                    if (noteObj.getString("date") == date && noteObj.getString("desc") == oldDesc) {
-                        noteObj.put("desc", newDesc)
+                doctorObj = obj
+                break
+            }
+        }
+
+        doctorObj?.let { dObj ->
+            val notesArray = dObj.optJSONArray("notes") ?: JSONArray()
+            if (index in 0 until notesArray.length()) {
+                val noteObj = notesArray.getJSONObject(index)
+                noteObj.put("date", newDate)
+                noteObj.put("desc", newDesc)
+
+                file.writeText(jsonArray.toString())
+                notesContainer.removeAllViews()
+                for (i in 0 until notesArray.length()) {
+                    val note = notesArray.getJSONObject(i)
+                    addNoteView(note.getString("date"), note.getString("desc"), i)
+                }
+            }
+        }
+    }
+
+    // --------------------------
+    // 📍 PHONE NUMBERS
+    // --------------------------
+    private fun showPhoneNumbersDialog() {
+        val file = File(getExternalFilesDir(null), fileNameNotes)
+        val phones = mutableListOf<String>()
+
+        if (file.exists()) {
+            val jsonArray = JSONArray(file.readText())
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                if (obj.getString("doctor") == doctorName && obj.getString("hospital") == hospitalName) {
+                    val phoneArray = obj.optJSONArray("phones") ?: JSONArray()
+                    for (j in 0 until phoneArray.length()) {
+                        phones.add(phoneArray.getString(j))
                     }
                 }
             }
         }
 
-        file.writeText(jsonArray.toString())
+        val dialogView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 16, 32, 16)
+        }
+
+        val phoneInputs = mutableListOf<EditText>()
+        if (phones.isEmpty()) {
+            val input = EditText(this).apply { hint = "Enter phone number" }
+            phoneInputs.add(input)
+            dialogView.addView(input)
+        } else {
+            phones.forEach { number ->
+                val input = EditText(this).apply { setText(number) }
+                phoneInputs.add(input)
+                dialogView.addView(input)
+            }
+        }
+
+        val addMoreBtn = Button(this).apply {
+            text = "➕ Add Another Number"
+            setOnClickListener {
+                val newInput = EditText(this@DetailsActivity).apply {
+                    hint = "Enter phone number"
+                }
+                phoneInputs.add(newInput)
+                dialogView.addView(newInput)
+            }
+        }
+        dialogView.addView(addMoreBtn)
+
+        AlertDialog.Builder(this)
+            .setTitle("📞 Phone Numbers")
+            .setView(dialogView)
+            .setPositiveButton("Save") { _, _ ->
+                val updatedPhones = phoneInputs.mapNotNull { it.text.toString().trim().takeIf { txt -> txt.isNotEmpty() } }
+                savePhoneNumbers(updatedPhones)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
+
+    private fun savePhoneNumbers(numbers: List<String>) {
+        val file = File(getExternalFilesDir(null), fileNameNotes)
+        val jsonArray = if (file.exists()) JSONArray(file.readText()) else JSONArray()
+
+        var doctorObj: JSONObject? = null
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.getJSONObject(i)
+            if (obj.getString("doctor") == doctorName && obj.getString("hospital") == hospitalName) {
+                doctorObj = obj
+                break
+            }
+        }
+
+        if (doctorObj == null) {
+            doctorObj = JSONObject().apply {
+                put("doctor", doctorName)
+                put("hospital", hospitalName)
+                put("phones", JSONArray(numbers))
+                put("notes", JSONArray())
+            }
+            jsonArray.put(doctorObj)
+        } else {
+            doctorObj.put("phones", JSONArray(numbers))
+        }
+
+        file.writeText(jsonArray.toString())
+        Toast.makeText(this, "Saved phone numbers", Toast.LENGTH_SHORT).show()
+    }
+
+    // --------------------------
+    // 📍 DATA HELPERS
+    // --------------------------
+    private fun loadData() {
+        val file = File(getExternalFilesDir(null), fileNameHospital)
+        if (file.exists()) {
+            val jsonText = file.readText()
+            val jsonArray = JSONArray(jsonText)
+            hospitals.clear()
+            for (i in 0 until jsonArray.length()) {
+                val hObj = jsonArray.getJSONObject(i)
+                val doctors = mutableListOf<Doctor>()
+                val doctorArray = hObj.getJSONArray("doctors")
+                for (j in 0 until doctorArray.length()) {
+                    doctors.add(jsonToDoctor(doctorArray.getJSONObject(j)))
+                }
+                hospitals.add(Hospital(hObj.getString("name"), doctors))
+            }
+        }
+    }
+
+    private fun jsonToDoctor(obj: JSONObject): Doctor {
+        val name = obj.getString("name")
+        val role = obj.getString("role")
+        val address = obj.getString("address")
+        val referredArray = obj.getJSONArray("referredDoctors")
+        val referredDoctors = mutableListOf<Doctor>()
+        for (i in 0 until referredArray.length()) {
+            referredDoctors.add(jsonToDoctor(referredArray.getJSONObject(i)))
+        }
+        return Doctor(name, role, address, referredDoctors)
+    }
+
+    private fun findHospitalForDoctor(doctorName: String): Hospital? {
+        return hospitals.find { hospital ->
+            findDoctorRecursive(hospital.doctors, doctorName) != null
+        }
+    }
+
+    private fun findDoctorRecursive(doctors: List<Doctor>, name: String): Doctor? {
+        doctors.forEach { doctor ->
+            if (doctor.name.equals(name, true)) return doctor
+            findDoctorRecursive(doctor.referredDoctors, name)?.let { return it }
+        }
+        return null
+    }
+
+    // --------------------------
+    // 📍 Name and Hospital edits
+    // --------------------------
+    private fun showEditHospitalNameDialog(oldName: String) {
+        val input = EditText(this).apply {
+            setText(oldName)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("✏️ Edit Hospital Name")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val newName = input.text.toString().trim()
+                if (newName.isNotEmpty() && newName != oldName) {
+                    updateHospitalName(oldName, newName)
+                    Toast.makeText(this, "Hospital name updated", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showEditDoctorNameDialog(oldName: String, hospital: String) {
+        val input = EditText(this).apply {
+            setText(oldName)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("✏️ Edit Doctor Name")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val newName = input.text.toString().trim()
+                if (newName.isNotEmpty() && newName != oldName) {
+                    updateDoctorName(hospital, oldName, newName)
+                    Toast.makeText(this, "Doctor name updated", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun updateHospitalName(oldName: String, newName: String) {
+        // Update hospital_data.json
+        val hospitalFile = File(getExternalFilesDir(null), "hospital_data.json")
+        if (hospitalFile.exists()) {
+            val array = JSONArray(hospitalFile.readText())
+            for (i in 0 until array.length()) {
+                val hObj = array.getJSONObject(i)
+                if (hObj.getString("name") == oldName) {
+                    hObj.put("name", newName)
+                }
+            }
+            hospitalFile.writeText(array.toString())
+        }
+
+        // Update doctor_notes.json
+        val notesFile = File(getExternalFilesDir(null), "doctor_notes.json")
+        if (notesFile.exists()) {
+            val array = JSONArray(notesFile.readText())
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                if (obj.getString("hospital") == oldName) {
+                    obj.put("hospital", newName)
+                }
+            }
+            notesFile.writeText(array.toString())
+        }
+    }
+    private fun updateDoctorName(hospitalName: String, oldDoctor: String, newDoctor: String) {
+        // Update hospital_data.json
+        val hospitalFile = File(getExternalFilesDir(null), "hospital_data.json")
+        if (hospitalFile.exists()) {
+            val array = JSONArray(hospitalFile.readText())
+            for (i in 0 until array.length()) {
+                val hObj = array.getJSONObject(i)
+                if (hObj.getString("name") == hospitalName) {
+                    val doctorsArray = hObj.getJSONArray("doctors")
+                    updateDoctorRecursive(doctorsArray, oldDoctor, newDoctor)
+                }
+            }
+            hospitalFile.writeText(array.toString())
+        }
+
+        // Update doctor_notes.json
+        val notesFile = File(getExternalFilesDir(null), "doctor_notes.json")
+        if (notesFile.exists()) {
+            val array = JSONArray(notesFile.readText())
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                if (obj.getString("hospital") == hospitalName &&
+                    obj.getString("doctor") == oldDoctor) {
+                    obj.put("doctor", newDoctor)
+                }
+            }
+            notesFile.writeText(array.toString())
+        }
+    }
+
+    private fun updateDoctorRecursive(doctorsArray: JSONArray, oldName: String, newName: String) {
+        for (i in 0 until doctorsArray.length()) {
+            val doc = doctorsArray.getJSONObject(i)
+            if (doc.getString("name") == oldName) {
+                doc.put("name", newName)
+            }
+            val refs = doc.getJSONArray("referredDoctors")
+            updateDoctorRecursive(refs, oldName, newName)
+        }
+    }
+
 }
 
 //end of details Activity.kt
@@ -257,7 +617,7 @@ class MainActivity : AppCompatActivity() {
     private fun appendDoctor(sb: SpannableStringBuilder, doctor: Doctor, level: Int) {
         val indent = "    ".repeat(level)
         val doctorStart = sb.length
-        sb.append("$indent👨‍⚕️ ${doctor.name} - ${doctor.role} (${doctor.address})\n")
+        sb.append("$indent${doctor.name} - ${doctor.role} (${doctor.address})\n")
         val doctorEnd = sb.length
 
         // Make doctor name clickable
@@ -321,9 +681,81 @@ class MainActivity : AppCompatActivity() {
         displayTree()
 
         val fab = findViewById<FloatingActionButton>(R.id.fab)
-        fab.setOnClickListener {
-            showAddEntityDialog()
+        fab.setOnClickListener { showAddEntityDialog() }
+
+        // Search setup
+        val searchView = findViewById<SearchView>(R.id.searchView)
+        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?): Boolean {
+                performSearch(query ?: "")
+                return true
+            }
+
+            override fun onQueryTextChange(newText: String?): Boolean {
+                val q = newText?.trim() ?: ""
+                if (q.isEmpty()) {
+                    // If user cleared the search box, show original full hierarchy
+                    displayTree()
+                } else {
+                    performSearch(q)
+                }
+                return true
+            }
+        })
+
+    }
+    private fun doctorMatchesRecursive(doc: Doctor, qLower: String): Boolean {
+        // check name, role, address (add other fields if you want)
+        if (doc.name.lowercase().contains(qLower)
+            || doc.role.lowercase().contains(qLower)
+            || doc.address.lowercase().contains(qLower)
+        ) return true
+
+        // check referred doctors recursively
+        for (ref in doc.referredDoctors) {
+            if (doctorMatchesRecursive(ref, qLower)) return true
         }
+        return false
+    }
+
+    private fun performSearch(query: String) {
+        val q = query.trim()
+        if (q.isEmpty()) {
+            displayTree()
+            return
+        }
+
+        val lowerQuery = q.lowercase()
+        val treeView = findViewById<TextView>(R.id.treeTextView)
+        val sb = SpannableStringBuilder()
+
+        for (hospital in hospitals) {
+            // does hospital itself match OR any doctor (recursively) match?
+            val hospitalMatch = hospital.name.lowercase().contains(lowerQuery)
+            val matchedDoctors = hospital.doctors.filter { doctorMatchesRecursive(it, lowerQuery) }
+
+            if (hospitalMatch || matchedDoctors.isNotEmpty()) {
+                // Append hospital
+                val hospitalStart = sb.length
+                sb.append("🏥 ${hospital.name}\n")
+                val hospitalEnd = sb.length
+                sb.setSpan(
+                    createClickableSpan(TYPE_HOSPITAL, hospital.name),
+                    hospitalStart, hospitalEnd,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+
+                // Append only those top-level doctors whose subtree contains matches
+                for (doctor in hospital.doctors) {
+                    if (doctorMatchesRecursive(doctor, lowerQuery)) {
+                        appendDoctor(sb, doctor, 1) // this will include referred doctors (the subtree)
+                    }
+                }
+            }
+        }
+
+        treeView.movementMethod = LinkMovementMethod.getInstance()
+        treeView.text = if (sb.isNotEmpty()) sb else SpannableStringBuilder("No matches found")
     }
 
     private fun showAddEntityDialog() {
