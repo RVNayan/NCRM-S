@@ -67,6 +67,7 @@ class DetailsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_details)
 
+
         val type = intent.getStringExtra(EXTRA_TYPE)
         val name = intent.getStringExtra(EXTRA_NAME)
         hospitalName = intent.getStringExtra(EXTRA_HOSPITAL) ?: ""
@@ -486,8 +487,13 @@ class DetailsActivity : AppCompatActivity() {
             .setPositiveButton("Save") { _, _ ->
                 val newName = input.text.toString().trim()
                 if (newName.isNotEmpty() && newName != oldName) {
-                    updateHospitalName(oldName, newName)
-                    Toast.makeText(this, "Hospital name updated", Toast.LENGTH_SHORT).show()
+                    if (isHospitalExists(newName)) {
+                        Toast.makeText(this, "⚠️ Hospital with this name already exists", Toast.LENGTH_SHORT).show()
+                    } else {
+                        updateHospitalName(oldName, newName)
+                        Toast.makeText(this, "✅ Hospital name updated", Toast.LENGTH_SHORT).show()
+                        reloadDataAndRefresh()
+                    }
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -505,12 +511,60 @@ class DetailsActivity : AppCompatActivity() {
             .setPositiveButton("Save") { _, _ ->
                 val newName = input.text.toString().trim()
                 if (newName.isNotEmpty() && newName != oldName) {
-                    updateDoctorName(hospital, oldName, newName)
-                    Toast.makeText(this, "Doctor name updated", Toast.LENGTH_SHORT).show()
+                    if (isDoctorExists(newName)) {
+                        Toast.makeText(this, "⚠️ Doctor with this name already exists", Toast.LENGTH_SHORT).show()
+                    } else {
+                        updateDoctorName(hospital, oldName, newName)
+                        Toast.makeText(this, "✅ Doctor name updated", Toast.LENGTH_SHORT).show()
+                        reloadDataAndRefresh()
+                    }
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+    private fun isHospitalExists(name: String): Boolean {
+        val file = File(getExternalFilesDir(null), "hospital_data.json")
+        if (!file.exists()) return false
+        val array = JSONArray(file.readText())
+        for (i in 0 until array.length()) {
+            if (array.getJSONObject(i).getString("name").equals(name, true)) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun isDoctorExists(name: String): Boolean {
+        val file = File(getExternalFilesDir(null), "hospital_data.json")
+        if (!file.exists()) return false
+        val array = JSONArray(file.readText())
+        for (i in 0 until array.length()) {
+            val doctorsArray = array.getJSONObject(i).getJSONArray("doctors")
+            if (findDoctorRecursive(doctorsArray, name)) return true
+        }
+        return false
+    }
+
+    private fun findDoctorRecursive(doctorsArray: JSONArray, name: String): Boolean {
+        for (i in 0 until doctorsArray.length()) {
+            val doc = doctorsArray.getJSONObject(i)
+            if (doc.getString("name").equals(name, true)) {
+                return true
+            }
+            if (findDoctorRecursive(doc.getJSONArray("referredDoctors"), name)) return true
+        }
+        return false
+    }
+    private fun reloadDataAndRefresh() {
+        loadData() // your existing function that reloads JSON into memory
+        val type = intent.getStringExtra(EXTRA_TYPE)
+        val name = intent.getStringExtra(EXTRA_NAME)
+
+        when (type) {
+            TYPE_HOSPITAL -> displayHospitalHierarchy(name ?: "")
+            TYPE_DOCTOR -> displayDoctorDetails(name ?: "")
+        }
     }
 
     private fun updateHospitalName(oldName: String, newName: String) {
@@ -673,6 +727,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        findViewById<Button>(R.id.btnImport).setOnClickListener {
+            importData()
+        }
+
         if (hospitals.isEmpty()) {
             hospitals.add(Hospital("Default Hospital"))
         }
@@ -775,42 +833,53 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAddHospitalDialog() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_hospital, null)
+        val etHospitalName = dialogView.findViewById<AutoCompleteTextView>(R.id.etHospitalName)
+
+        // Suggestions
+        setupAutoComplete(etHospitalName, getHospitalNames())
 
         AlertDialog.Builder(this)
             .setTitle("Add Hospital")
             .setView(dialogView)
             .setPositiveButton("Save") { _, _ ->
-                val name = dialogView.findViewById<EditText>(R.id.etHospitalName)?.text.toString()
-                //val address = dialogView.findViewById<EditText>(R.id.etHospitalAddress)?.text.toString()
+                val name = etHospitalName.text.toString().trim()
 
                 if (name.isNotEmpty()) {
                     val existing = hospitals.find { it.name.equals(name, true) }
                     if (existing == null) {
                         hospitals.add(Hospital(name))
                         saveData()
+                        displayTree()
                         Toast.makeText(this, "Hospital added: $name", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(this, "Hospital already exists", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "⚠️ Hospital already exists", Toast.LENGTH_SHORT).show()
                     }
-
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
+
     @SuppressLint("MissingInflatedId")
     private fun showAddNewDoctorDialog() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_doctor, null)
+
+        val etDoctorName = dialogView.findViewById<AutoCompleteTextView>(R.id.etDoctorName)
+        val etHospitalName = dialogView.findViewById<AutoCompleteTextView>(R.id.etHospitalName)
+
+        // Suggestions
+        setupAutoComplete(etDoctorName, getDoctorNames())
+        setupAutoComplete(etHospitalName, getHospitalNames())
 
         AlertDialog.Builder(this)
             .setTitle("Add New Doctor")
             .setView(dialogView)
             .setPositiveButton("Save") { _, _ ->
-                val name = dialogView.findViewById<EditText>(etDoctorName)?.text.toString()
-                val role = dialogView.findViewById<EditText>(R.id.etDoctorRole)?.text.toString()
-                val address = dialogView.findViewById<EditText>(R.id.etDoctorAddress)?.text.toString()
-                val hospitalName = dialogView.findViewById<EditText>(R.id.etHospitalName)?.text.toString()
+                val name = etDoctorName.text.toString().trim()
+                val role = dialogView.findViewById<EditText>(R.id.etDoctorRole).text.toString().trim()
+                val address = dialogView.findViewById<EditText>(R.id.etDoctorAddress).text.toString().trim()
+                val hospitalName = etHospitalName.text.toString().trim()
 
                 if (name.isEmpty() || role.isEmpty() || address.isEmpty() || hospitalName.isEmpty()) {
                     Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
@@ -818,27 +887,38 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 var hospital = hospitals.find { it.name.equals(hospitalName, true) }
-
                 if (hospital == null) {
-                    // Create new hospital and add the doctor to it
                     hospital = Hospital(hospitalName)
                     hospitals.add(hospital)
                     Toast.makeText(this, "Created new hospital: $hospitalName", Toast.LENGTH_SHORT).show()
                 }
 
-                // Now add the doctor to the hospital (whether it existed or was newly created)
+                // Prevent duplicate doctors in this hospital
+                if (hospital.doctors.any { it.name.equals(name, true) }) {
+                    Toast.makeText(this, "⚠️ Doctor already exists in $hospitalName", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
                 hospital.doctors.add(Doctor(name, role, address))
                 saveData()
+                displayTree()
                 Toast.makeText(this, "Doctor added to $hospitalName", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
+
     @SuppressLint("MissingInflatedId")
     private fun showAddReferredDoctorDialog() {
         try {
             val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_referred_doctor, null)
+
+            // 🔹 Collect ALL doctors from all hospitals (including referred ones)
+            val allDoctorStrings = mutableListOf<String>()
+            for (hospital in hospitals) {
+                collectAllDoctors(hospital.doctors, hospital.name, allDoctorStrings)
+            }
 
             // Initialize AutoCompleteTextView for referring doctor
             val referredByField = dialogView.findViewById<AutoCompleteTextView>(R.id.etReferredBy).apply {
@@ -847,11 +927,31 @@ class MainActivity : AppCompatActivity() {
                     ArrayAdapter(
                         this@MainActivity,
                         android.R.layout.simple_dropdown_item_1line,
-                        hospitals.flatMap { hospital ->
-                            hospital.doctors.map { doctor ->
-                                "${doctor.name} - ${doctor.role} [${hospital.name}]"
-                            }
-                        }
+                        allDoctorStrings
+                    )
+                )
+            }
+
+            // 🔹 Add hospital suggestions too (optional, for the Hospital Name field)
+            val hospitalField = dialogView.findViewById<AutoCompleteTextView>(R.id.etHospitalName).apply {
+                threshold = 1
+                setAdapter(
+                    ArrayAdapter(
+                        this@MainActivity,
+                        android.R.layout.simple_dropdown_item_1line,
+                        hospitals.map { it.name }
+                    )
+                )
+            }
+
+            // 🔹 Add doctor name suggestions (to avoid duplicates + speed entry)
+            val doctorNameField = dialogView.findViewById<AutoCompleteTextView>(R.id.etDoctorName).apply {
+                threshold = 1
+                setAdapter(
+                    ArrayAdapter(
+                        this@MainActivity,
+                        android.R.layout.simple_dropdown_item_1line,
+                        allDoctorStrings.map { it.substringBefore(" -") }.distinct() // just doctor names
                     )
                 )
             }
@@ -864,11 +964,22 @@ class MainActivity : AppCompatActivity() {
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
+
         } catch (e: Exception) {
             Toast.makeText(this, "Error showing dialog: ${e.message}", Toast.LENGTH_LONG).show()
             Log.e("DialogError", "Failed to show dialog", e)
         }
     }
+    // Recursively collect ALL doctors in a hospital (including referred ones)
+    private fun collectAllDoctors(doctors: List<Doctor>, hospitalName: String, result: MutableList<String>) {
+        for (doctor in doctors) {
+            result.add("${doctor.name} - ${doctor.role} [${hospitalName}]")
+            if (doctor.referredDoctors.isNotEmpty()) {
+                collectAllDoctors(doctor.referredDoctors, hospitalName, result)
+            }
+        }
+    }
+
 
     private fun handleSaveReferredDoctor(dialogView: View) {
         try {
@@ -877,37 +988,38 @@ class MainActivity : AppCompatActivity() {
                 ?.toString()
                 ?.substringBefore(" -")
                 ?.trim() ?: ""
-            val name = dialogView.findViewById<EditText>(R.id.etDoctorName).text.toString()
-            val role = dialogView.findViewById<EditText>(R.id.etDoctorRole).text.toString()
-            val address = dialogView.findViewById<EditText>(R.id.etDoctorAddress).text.toString()
-            val hospitalName = dialogView.findViewById<EditText>(R.id.etHospitalName).text.toString()
 
-            // Validate all fields
+            val name = dialogView.findViewById<AutoCompleteTextView>(R.id.etDoctorName).text.toString().trim()
+            val role = dialogView.findViewById<EditText>(R.id.etDoctorRole).text.toString().trim()
+            val address = dialogView.findViewById<EditText>(R.id.etDoctorAddress).text.toString().trim()
+            val hospitalName = dialogView.findViewById<AutoCompleteTextView>(R.id.etHospitalName).text.toString().trim()
+
+            // ✅ Validate all fields first
             if (referredBy.isEmpty() || name.isEmpty() || role.isEmpty() || address.isEmpty() || hospitalName.isEmpty()) {
                 Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            // Find referring doctor and their hospital
+            // ✅ Check if doctor already exists anywhere
+            if (isDoctorExistsInAnyHospital(name)) {
+                Toast.makeText(this, "⚠️ Doctor already exists in the system", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            // ✅ Find referring doctor and hospital
             val (referringDoctor, referringHospital) = findReferringDoctorAndHospital(referredBy)
                 ?: run {
                     Toast.makeText(this, "Referring doctor not found", Toast.LENGTH_SHORT).show()
                     return
                 }
 
-            // Check if doctor exists anywhere in the system
-            if (isDoctorExistsInAnyHospital(name)) {
-                Toast.makeText(this, "Doctor already exists in the system", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            // Check if referral already exists
+            // ✅ Check if referral already exists
             if (referringDoctor.referredDoctors.any { it.name.equals(name, true) }) {
                 Toast.makeText(this, "This referral already exists", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            // Create and add new referred doctor
+            // ✅ Create and add new referred doctor
             referringDoctor.referredDoctors.add(Doctor(name, role, address))
             saveData()
             displayTree()
@@ -918,6 +1030,7 @@ class MainActivity : AppCompatActivity() {
             Log.e("SaveError", "Failed to save referral", e)
         }
     }
+
 
     // Helper function to check if doctor exists anywhere
     private fun isDoctorExistsInAnyHospital(doctorName: String): Boolean {
@@ -1010,4 +1123,92 @@ class MainActivity : AppCompatActivity() {
         obj.put("referredDoctors", referredArray)
         return obj
     }
+
+
+    // For preventing Duplicates
+    private fun getHospitalNames(): List<String> {
+        return hospitals.map { it.name }.distinct()
+    }
+
+    private fun getDoctorNames(): List<String> {
+        return hospitals.flatMap { it.doctors.map { doc -> doc.name } }.distinct()
+    }
+
+    private fun setupAutoComplete(view: AutoCompleteTextView, items: List<String>) {
+        val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, items)
+        view.setAdapter(adapter)
+    }
+
+    private val IMPORT_HOSPITAL_REQUEST_CODE = 2001
+    private val IMPORT_NOTES_REQUEST_CODE = 2002
+
+    private var importedHospitalJson: String? = null
+    private var importedNotesJson: String? = null
+
+    // Start import process
+    private fun importData() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+        }
+        startActivityForResult(intent, IMPORT_HOSPITAL_REQUEST_CODE)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (resultCode != RESULT_OK || data?.data == null) return
+
+        try {
+            val uri = data.data!!
+            val json = contentResolver.openInputStream(uri)?.bufferedReader().use { it?.readText() } ?: ""
+
+            when (requestCode) {
+                IMPORT_HOSPITAL_REQUEST_CODE -> {
+                    if (json.isNotBlank()) {
+                        importedHospitalJson = json
+                        Toast.makeText(this, "✅ Hospital data selected", Toast.LENGTH_SHORT).show()
+
+                        // Now ask for doctor_notes.json
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "application/json"
+                        }
+                        startActivityForResult(intent, IMPORT_NOTES_REQUEST_CODE)
+                    }
+                }
+
+                IMPORT_NOTES_REQUEST_CODE -> {
+                    if (json.isNotBlank()) {
+                        importedNotesJson = json
+                        Toast.makeText(this, "✅ Doctor notes selected", Toast.LENGTH_SHORT).show()
+
+                        // Now write both files
+                        if (importedHospitalJson != null && importedNotesJson != null) {
+                            overwriteJsonFile("hospital_data.json", importedHospitalJson!!)
+                            overwriteJsonFile("doctor_notes.json", importedNotesJson!!)
+                            Toast.makeText(this, "🎉 Import successful", Toast.LENGTH_LONG).show()
+
+                            // Refresh UI
+                            loadData()
+                            displayTree()
+
+                            // reset after import
+                            importedHospitalJson = null
+                            importedNotesJson = null
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "❌ Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+            e.printStackTrace()
+        }
+    }
+
+    private fun overwriteJsonFile(fileName: String, content: String) {
+        val file = File(getExternalFilesDir(null), fileName)
+        file.writeText(content)
+    }
+
 }

@@ -12,11 +12,13 @@
 <!--        android:text="Hospital Name"-->
 <!--        android:textAppearance="?attr/textAppearanceBodyMedium"/>-->
 
-    <EditText
+    <AutoCompleteTextView
         android:id="@+id/etHospitalName"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Enter hospital name"/>
+        android:hint="Enter hospital name"
+        android:completionThreshold="1"
+        android:textSize="18sp" />
 
 <!--    <TextView-->
 <!--        android:layout_width="wrap_content"-->
