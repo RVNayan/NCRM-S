@@ -30,7 +30,10 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 data class Doctor(
     val name: String,
@@ -286,6 +289,9 @@ class DetailsActivity : AppCompatActivity() {
         }
 
         file.writeText(jsonArray.toString())
+        notesContainer.removeAllViews()
+        loadNotes()
+
     }
 
     private fun loadNotes() {
@@ -297,13 +303,38 @@ class DetailsActivity : AppCompatActivity() {
             val obj = jsonArray.getJSONObject(i)
             if (obj.getString("doctor") == doctorName && obj.getString("hospital") == hospitalName) {
                 val notesArray = obj.getJSONArray("notes")
+
+                val notesList = mutableListOf<Triple<Date, String, String>>() // (parsedDate, dateString, desc)
+
+                val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+
                 for (j in 0 until notesArray.length()) {
                     val noteObj = notesArray.getJSONObject(j)
-                    addNoteView(noteObj.getString("date"), noteObj.getString("desc"), j)
+                    val dateStr = noteObj.getString("date")
+                    val desc = noteObj.getString("desc")
+
+                    val parsedDate = try {
+                        sdf.parse(dateStr)
+                    } catch (e: Exception) {
+                        null
+                    }
+
+                    if (parsedDate != null) {
+                        notesList.add(Triple(parsedDate, dateStr, desc))
+                    }
+                }
+
+                // ✅ Sort by actual date
+                val sortedNotes = notesList.sortedBy { it.first }
+
+                // If you want latest first, just use sortedByDescending { it.first }
+                sortedNotes.forEachIndexed { index, (_, dateStr, desc) ->
+                    addNoteView(dateStr, desc, index)
                 }
             }
         }
     }
+
 
     private fun updateNoteAtIndex(index: Int, newDate: String, newDesc: String) {
         val file = File(getExternalFilesDir(null), fileNameNotes)
@@ -334,6 +365,9 @@ class DetailsActivity : AppCompatActivity() {
                 }
             }
         }
+        notesContainer.removeAllViews()
+        loadNotes()
+
     }
 
     // --------------------------
@@ -731,9 +765,9 @@ class MainActivity : AppCompatActivity() {
             importData()
         }
 
-        if (hospitals.isEmpty()) {
-            hospitals.add(Hospital("Default Hospital"))
-        }
+//        if (hospitals.isEmpty()) {
+//            hospitals.add(Hospital("Default Hospital"))
+//        }
 
         loadData()
         displayTree()

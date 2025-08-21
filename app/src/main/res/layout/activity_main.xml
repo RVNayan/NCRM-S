@@ -4,44 +4,33 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
-    <Button
-        android:id="@+id/btnImport"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="📂 Import Data"
-        android:layout_marginBottom="8dp"/>
 
-    <!-- Content container -->
-    <FrameLayout
-        android:id="@+id/content_frame"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-
-    <!-- Floating Action Button -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:contentDescription="Add Entity"
-        android:src="@android:drawable/ic_input_add"
-        android:layout_margin="16dp"
-        app:layout_anchor="@id/content_frame"
-        app:layout_anchorGravity="bottom|end"
-        app:tint="@android:color/white" />
-
+    <!-- Main vertical layout -->
     <LinearLayout
         style="@style/ScreenContainer"
         android:orientation="vertical"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:fitsSystemWindows="true"
+        android:paddingTop="32dp"
         android:padding="16dp">
+
+        <!-- Import Button -->
+        <Button
+            android:id="@+id/btnImport"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📂 Import Data"
+            android:layout_gravity="end"
+            android:layout_marginBottom="8dp"/>
 
         <!-- Search bar -->
         <SearchView
             android:id="@+id/searchView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:queryHint="Search doctor or hospital..." />
+            android:queryHint="Search doctor or hospital..."
+            android:layout_marginBottom="12dp"/>
 
         <!-- Scrollable tree -->
         <ScrollView
@@ -57,4 +46,17 @@
                 android:fontFamily="monospace" />
         </ScrollView>
     </LinearLayout>
+
+    <!-- Floating Action Button -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:contentDescription="Add Entity"
+        android:src="@android:drawable/ic_input_add"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        app:tint="@android:color/white" />
+
+
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -4,8 +4,7 @@
     android:orientation="vertical"
     android:padding="16dp"
     android:minHeight="400dp"
-    android:layout_gravity="center"
-    >
+    android:layout_gravity="center">
 
     <EditText
         android:id="@+id/etNoteDate"
@@ -14,7 +13,10 @@
         android:focusable="false"
         android:hint="Select Date"
         android:padding="12dp"
-        android:background="@android:drawable/editbox_background" />
+        android:background="?android:attr/editTextBackground"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textColorHint="?android:attr/textColorHint"
+        android:textSize="16sp"/>
 
     <EditText
         android:id="@+id/etNoteDesc"
@@ -25,7 +27,10 @@
         android:gravity="top"
         android:minHeight="200dp"
         android:padding="12dp"
-        android:background="@android:drawable/editbox_background"
+        android:background="?android:attr/editTextBackground"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textColorHint="?android:attr/textColorHint"
         android:inputType="textMultiLine"
-        android:scrollbars="vertical"/>
+        android:scrollbars="vertical"
+        android:textSize="16sp"/>
 </LinearLayout>
