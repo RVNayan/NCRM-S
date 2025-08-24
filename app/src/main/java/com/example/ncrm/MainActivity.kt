@@ -39,6 +39,7 @@ data class Doctor(
     val name: String,
     val role: String,
     val address: String,
+    val referredBy: String = "", // Add this field
     val referredDoctors: MutableList<Doctor> = mutableListOf()
 )
 
@@ -99,15 +100,61 @@ class DetailsActivity : AppCompatActivity() {
     // --------------------------
     // 📍 HOSPITAL VIEW
     // --------------------------
+    // Helper function to get all doctors (including referred ones) at the same level
+    private fun getAllDoctorsFlat(hospital: Hospital): List<Doctor> {
+        val allDoctors = mutableListOf<Doctor>()
+        for (doctor in hospital.doctors) {
+            // Add the doctor with their actual hospital context
+            allDoctors.add(doctor.copy())
+            // Add referred doctors but maintain their hospital assignment
+            addReferredDoctorsFlat(doctor, allDoctors, hospital.name)
+        }
+        return allDoctors
+    }
+
+    private fun addReferredDoctorsFlat(doctor: Doctor, allDoctors: MutableList<Doctor>, hospitalName: String) {
+        for (referred in doctor.referredDoctors) {
+            // Add referred doctor with hospital context
+            allDoctors.add(referred.copy())
+            addReferredDoctorsFlat(referred, allDoctors, hospitalName)
+        }
+    }
+
     private fun displayHospitalHierarchy(hospitalName: String) {
         val treeView = findViewById<TextView>(R.id.detailsTextView)
         val sb = SpannableStringBuilder()
 
         val hospital = hospitals.find { it.name.equals(hospitalName, true) }
         if (hospital != null) {
-            sb.append("🏥 ${hospital.name}\n\n") // Show hospital name at top
-            for (doctor in hospital.doctors) {
-                appendDoctor(sb, doctor, 0, hospital.name)
+            sb.append("🏥 ${hospital.name}\n\n")
+
+            // Display all doctors at the same level
+            for (doctor in getAllDoctorsFlat(hospital)) {
+                val start = sb.length
+                val doctorText = if (doctor.referredBy.isNotEmpty()) {
+                    "   ${doctor.name} - ${doctor.role} (${doctor.address}) - Referred by: ${doctor.referredBy}\n"
+                } else {
+                    "   ${doctor.name} - ${doctor.role} (${doctor.address})\n"
+                }
+                sb.append(doctorText)
+                val end = sb.length
+
+                sb.setSpan(object : ClickableSpan() {
+                    override fun onClick(widget: View) {
+                        val intent = Intent(this@DetailsActivity, DetailsActivity::class.java).apply {
+                            putExtra(EXTRA_TYPE, TYPE_DOCTOR)
+                            putExtra(EXTRA_NAME, doctor.name)
+                            putExtra(EXTRA_HOSPITAL, hospitalName)
+                        }
+                        startActivity(intent)
+                    }
+
+                    override fun updateDrawState(ds: TextPaint) {
+                        super.updateDrawState(ds)
+                        ds.color = ds.linkColor
+                        ds.isUnderlineText = false
+                    }
+                }, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
 
@@ -157,22 +204,28 @@ class DetailsActivity : AppCompatActivity() {
         notesContainer = findViewById(R.id.notesContainer)
 
         val tvDoctorInfo = findViewById<TextView>(R.id.tvDoctorInfo)
-        tvDoctorInfo.text = "👨‍⚕️ $doctorName\n🏥 $hospitalName"
 
-// First click = edit doctor name
+        // Find the doctor to get referring information
+        val doctor = findDoctorRecursive(hospitals.flatMap { it.doctors }, doctorName)
+        val referringInfo = if (doctor?.referredBy?.isNotEmpty() == true) {
+            "\n👥 Referred by: ${doctor.referredBy}"
+        } else {
+            ""
+        }
+
+        tvDoctorInfo.text = "👨‍⚕️ $doctorName\n🏥 $hospitalName$referringInfo"
+
+        // Rest of the setup code remains the same...
         tvDoctorInfo.setOnLongClickListener {
             showEditDoctorNameDialog(doctorName, hospitalName)
             true
         }
 
-// Normal click = show phone numbers
         tvDoctorInfo.setOnClickListener {
             showPhoneNumbersDialog()
         }
 
-
         loadNotes()
-
         findViewById<Button>(R.id.btnAddNote).setOnClickListener {
             showAddNoteDialog()
         }
@@ -288,10 +341,10 @@ class DetailsActivity : AppCompatActivity() {
             doctorObj.put("notes", notesArray)
         }
 
+
         file.writeText(jsonArray.toString())
         notesContainer.removeAllViews()
         loadNotes()
-
     }
 
     private fun loadNotes() {
@@ -485,12 +538,27 @@ class DetailsActivity : AppCompatActivity() {
         val name = obj.getString("name")
         val role = obj.getString("role")
         val address = obj.getString("address")
+        val referredBy = obj.optString("referredBy", "") // Add this line
         val referredArray = obj.getJSONArray("referredDoctors")
         val referredDoctors = mutableListOf<Doctor>()
         for (i in 0 until referredArray.length()) {
             referredDoctors.add(jsonToDoctor(referredArray.getJSONObject(i)))
         }
-        return Doctor(name, role, address, referredDoctors)
+        return Doctor(name, role, address, referredBy, referredDoctors) // Update this line
+    }
+
+    private fun doctorToJson(doc: Doctor): JSONObject {
+        val obj = JSONObject()
+        obj.put("name", doc.name)
+        obj.put("role", doc.role)
+        obj.put("address", doc.address)
+        obj.put("referredBy", doc.referredBy) // Add this line
+        val referredArray = JSONArray()
+        for (r in doc.referredDoctors) {
+            referredArray.put(doctorToJson(r))
+        }
+        obj.put("referredDoctors", referredArray)
+        return obj
     }
 
     private fun findHospitalForDoctor(doctorName: String): Hospital? {
@@ -693,13 +761,46 @@ class MainActivity : AppCompatActivity() {
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
             )
 
+            // Display all doctors at the same level (no hierarchy)
             for (doctor in hospital.doctors) {
-                appendDoctor(sb, doctor, 1)
+                val doctorStart = sb.length
+                val doctorText = if (doctor.referredBy.isNotEmpty()) {
+                    "   ${doctor.name} - ${doctor.role} (${doctor.address}) - Referred by: ${doctor.referredBy}\n"
+                } else {
+                    "   ${doctor.name} - ${doctor.role} (${doctor.address})\n"
+                }
+                sb.append(doctorText)
+                val doctorEnd = sb.length
+                sb.setSpan(
+                    createClickableSpan(TYPE_DOCTOR, doctor.name),
+                    doctorStart, doctorEnd,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
             }
+            sb.append("\n")
         }
 
         treeView.movementMethod = LinkMovementMethod.getInstance()
         treeView.text = sb
+    }
+    // Helper function to get all doctors (including referred ones) at the same level
+    private fun getAllDoctorsFlat(hospital: Hospital): List<Doctor> {
+        val allDoctors = mutableListOf<Doctor>()
+        for (doctor in hospital.doctors) {
+            allDoctors.add(doctor)
+            // Add referred doctors recursively but at the same level
+            addReferredDoctorsFlat(doctor, allDoctors)
+        }
+        return allDoctors
+    }
+
+    private fun addReferredDoctorsFlat(doctor: Doctor, allDoctors: MutableList<Doctor>) {
+        for (referred in doctor.referredDoctors) {
+            // Create a copy with referredBy information
+            val referredWithRefInfo = referred.copy(referredBy = doctor.name)
+            allDoctors.add(referredWithRefInfo)
+            addReferredDoctorsFlat(referred, allDoctors)
+        }
     }
 
     private fun appendDoctor(sb: SpannableStringBuilder, doctor: Doctor, level: Int) {
@@ -822,9 +923,13 @@ class MainActivity : AppCompatActivity() {
         val sb = SpannableStringBuilder()
 
         for (hospital in hospitals) {
-            // does hospital itself match OR any doctor (recursively) match?
             val hospitalMatch = hospital.name.lowercase().contains(lowerQuery)
-            val matchedDoctors = hospital.doctors.filter { doctorMatchesRecursive(it, lowerQuery) }
+            val matchedDoctors = getAllDoctorsFlat(hospital).filter { doctor ->
+                doctor.name.lowercase().contains(lowerQuery) ||
+                        doctor.role.lowercase().contains(lowerQuery) ||
+                        doctor.address.lowercase().contains(lowerQuery) ||
+                        doctor.referredBy.lowercase().contains(lowerQuery)
+            }
 
             if (hospitalMatch || matchedDoctors.isNotEmpty()) {
                 // Append hospital
@@ -837,12 +942,23 @@ class MainActivity : AppCompatActivity() {
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
 
-                // Append only those top-level doctors whose subtree contains matches
-                for (doctor in hospital.doctors) {
-                    if (doctorMatchesRecursive(doctor, lowerQuery)) {
-                        appendDoctor(sb, doctor, 1) // this will include referred doctors (the subtree)
+                // Append matching doctors
+                for (doctor in matchedDoctors) {
+                    val doctorStart = sb.length
+                    val doctorText = if (doctor.referredBy.isNotEmpty()) {
+                        "   ${doctor.name} - ${doctor.role} (${doctor.address}) - Referred by: ${doctor.referredBy}\n"
+                    } else {
+                        "   ${doctor.name} - ${doctor.role} (${doctor.address})\n"
                     }
+                    sb.append(doctorText)
+                    val doctorEnd = sb.length
+                    sb.setSpan(
+                        createClickableSpan(TYPE_DOCTOR, doctor.name),
+                        doctorStart, doctorEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
                 }
+                sb.append("\n")
             }
         }
 
@@ -1040,31 +1156,46 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
-            // ✅ Find referring doctor and hospital
+            // ✅ Find the target hospital (where the doctor should be added)
+            var targetHospital = hospitals.find { it.name.equals(hospitalName, true) }
+            if (targetHospital == null) {
+                // Create new hospital if it doesn't exist
+                targetHospital = Hospital(hospitalName)
+                hospitals.add(targetHospital)
+                Toast.makeText(this, "Created new hospital: $hospitalName", Toast.LENGTH_SHORT).show()
+            }
+
+            // ✅ Find referring doctor (who might be in a different hospital)
             val (referringDoctor, referringHospital) = findReferringDoctorAndHospital(referredBy)
                 ?: run {
                     Toast.makeText(this, "Referring doctor not found", Toast.LENGTH_SHORT).show()
                     return
                 }
 
-            // ✅ Check if referral already exists
-            if (referringDoctor.referredDoctors.any { it.name.equals(name, true) }) {
-                Toast.makeText(this, "This referral already exists", Toast.LENGTH_SHORT).show()
+            // ✅ Check if doctor already exists in the target hospital
+            if (targetHospital.doctors.any { it.name.equals(name, true) }) {
+                Toast.makeText(this, "⚠️ Doctor already exists in $hospitalName", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            // ✅ Create and add new referred doctor
-            referringDoctor.referredDoctors.add(Doctor(name, role, address))
+            // ✅ Create the new doctor with reference to who referred them
+            val newDoctor = Doctor(name, role, address, referredBy) // Set referredBy field
+
+            // ✅ Add the doctor to the target hospital (not the referring doctor's hospital)
+            targetHospital.doctors.add(newDoctor)
+
+            // ✅ Also add the doctor to the referring doctor's referredDoctors list
+            referringDoctor.referredDoctors.add(newDoctor)
+
             saveData()
             displayTree()
-            Toast.makeText(this, "Added referral to $referredBy", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Added $name to $hospitalName (referred by $referredBy)", Toast.LENGTH_SHORT).show()
 
         } catch (e: Exception) {
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
             Log.e("SaveError", "Failed to save referral", e)
         }
     }
-
 
     // Helper function to check if doctor exists anywhere
     private fun isDoctorExistsInAnyHospital(doctorName: String): Boolean {
@@ -1135,21 +1266,22 @@ class MainActivity : AppCompatActivity() {
     private fun jsonToDoctor(obj: JSONObject): Doctor {
         val name = obj.getString("name")
         val role = obj.getString("role")
-        val address = obj.getString("address") // Add this line
+        val address = obj.getString("address")
+        val referredBy = obj.optString("referredBy", "") // Add this line
         val referredArray = obj.getJSONArray("referredDoctors")
         val referredDoctors = mutableListOf<Doctor>()
         for (i in 0 until referredArray.length()) {
             referredDoctors.add(jsonToDoctor(referredArray.getJSONObject(i)))
         }
-        return Doctor(name, role, address, referredDoctors) // Remove null, use address
+        return Doctor(name, role, address, referredBy, referredDoctors) // Update this line
     }
 
-    // Update doctorToJson to save address:
     private fun doctorToJson(doc: Doctor): JSONObject {
         val obj = JSONObject()
         obj.put("name", doc.name)
         obj.put("role", doc.role)
-        obj.put("address", doc.address) // Add this line
+        obj.put("address", doc.address)
+        obj.put("referredBy", doc.referredBy) // Add this line
         val referredArray = JSONArray()
         for (r in doc.referredDoctors) {
             referredArray.put(doctorToJson(r))
