@@ -275,6 +275,9 @@ class DetailsActivity : AppCompatActivity() {
                     } else {
                         updateNoteAtIndex(editIndex, date, desc)
                     }
+                    // ✅ Clear old views and reload from JSON to avoid duplicates
+                    notesContainer.removeAllViews()
+                    loadNotes()
                 }
             }
             .setNegativeButton("Cancel", null)
